@@ -1,0 +1,105 @@
+version: "3"
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1500
+    ipam:
+      config:
+        - subnet: 10.15.0.0/16
+
+services:
+  haproxy:
+    container_name: haproxy
+    image: haproxy:latest
+    links:
+      - openlitespeed:openlitespeed
+      - phpmyadmin:phpmyadmin
+      - varnish:varnish
+    ports:
+      - 80:80/tcp
+      - 443:443/tcp
+    volumes:
+      - ./etc/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./etc/haproxy/dhparam.pem:/usr/local/etc/haproxy/dhparam.pem:ro
+      - ./etc/haproxy/certs:/usr/local/etc/haproxy/certs/:ro
+      - ./etc/haproxy/errors:/usr/local/etc/haproxy/errors/:ro
+    networks:
+      default:
+        ipv4_address: 10.15.0.2
+    restart: always
+
+  varnish:
+    image: icodex/varnish
+    env_file:
+      - .env
+    volumes:
+      - ./data/varnish:/var/lib/varnish
+    networks:
+      default:
+        ipv4_address: 10.15.0.3
+    restart: always
+
+  openlitespeed:
+    image: icodex/openlitespeed:${OLS_VERSION}-${PHP_VERSION}
+    expose:
+      - 80
+    env_file:
+      - .env
+    volumes:
+      - ./data/openlitespeed/logs:/usr/local/lsws/logs:rw
+      - ./data/openlitespeed/cachedata:/usr/local/lsws/cachedata:rw
+      - ./web:/var/www/vhosts/localhost/html:rw
+    networks:
+      default:
+        ipv4_address: 10.15.0.4
+    restart: always
+    depends_on:
+      - mysqld
+
+  redis:
+    image: redis:latest
+    expose:
+      - 6379
+    networks:
+      default:
+        ipv4_address: 10.15.0.5
+    volumes:
+      - ./etc/redis/redis.conf:/etc/redis/redis.conf:rw
+      - ./data/redis:/data:rw
+    command: redis-server /etc/redis/redis.conf
+    privileged: true
+    restart: always
+
+  composer:
+    image: composer
+    volumes:
+      - ./web:/app:rw
+    command: install
+
+  phpmyadmin:
+    image: phpmyadmin
+    networks:
+      default:
+        ipv4_address: 10.15.0.6
+    expose:
+      - 80
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      - mysqld
+
+  mysqld:
+    image: mariadb:${MYSQL_VERSION}
+    networks:
+      default:
+        ipv4_address: 10.15.0.7
+    expose:
+      - 3306
+    env_file:
+      - .env
+    volumes:
+      - ./data/db/mysql:/var/lib/mysql:rw
+    restart: always

@@ -1,1 +1,1 @@
-# rancher-compose-lnmp
+# compose-lnmp
